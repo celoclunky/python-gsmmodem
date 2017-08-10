@@ -23,7 +23,7 @@ if PYTHON_VERSION >= 3:
     xrange = range
     dictValuesIter = dict.values
     dictItemsIter = dict.items
-else: #pragma: no cover
+else:   # pragma: no cover
     dictValuesIter = dict.itervalues
     dictItemsIter = dict.iteritems
 
@@ -54,12 +54,13 @@ class Sms(object):
 class ReceivedSms(Sms):
     """ An SMS message that has been received (MT) """
 
-    def __init__(self, gsmModem, status, number, time, text, smsc=None, udh=[]):
+    def __init__(self, gsmModem, status, number, time, text, msg_index=None, smsc=None, udh=[]):
         super(ReceivedSms, self).__init__(number, text, smsc)
         self._gsmModem = weakref.proxy(gsmModem)
         self.status = status
         self.time = time
         self.udh = udh
+        self.msg_index = msg_index
 
     def reply(self, message):
         """ Convenience method that sends a reply SMS to the sender of this message """
@@ -72,6 +73,7 @@ class ReceivedSms(Sms):
     def getModem(self):
         """ Convenience method that returns the gsm modem instance """
         return self._gsmModem
+
 
 class SentSms(Sms):
     """ An SMS message that has been sent (MO) """
@@ -1114,7 +1116,7 @@ class GsmModem(SerialComms):
                     if msgIndex != None and len(msgLines) > 0:
                         msgText = '\n'.join(msgLines)
                         msgLines = []
-                        messages.append(ReceivedSms(self, Sms.TEXT_MODE_STATUS_MAP[msgStatus], number, parseTextModeTimeStr(msgTime), msgText))
+                        messages.append(ReceivedSms(self, Sms.TEXT_MODE_STATUS_MAP[msgStatus], number, parseTextModeTimeStr(msgTime), msgText, msgIndex))
                         delMessages.add(int(msgIndex))
                     msgIndex, msgStatus, number, msgTime = cmglMatch.groups()
                     msgLines = []
@@ -1124,7 +1126,7 @@ class GsmModem(SerialComms):
             if msgIndex != None and len(msgLines) > 0:
                 msgText = '\n'.join(msgLines)
                 msgLines = []
-                messages.append(ReceivedSms(self, Sms.TEXT_MODE_STATUS_MAP[msgStatus], number, parseTextModeTimeStr(msgTime), msgText))
+                messages.append(ReceivedSms(self, Sms.TEXT_MODE_STATUS_MAP[msgStatus], number, parseTextModeTimeStr(msgTime), msgText, msgIndex))
                 delMessages.add(int(msgIndex))
         else:
             cmglRegex = re.compile('^\+CMGL:\s*(\d+),\s*(\d+),.*$')
@@ -1148,7 +1150,7 @@ class GsmModem(SerialComms):
                         # todo: make better fix
                     else:
                         if smsDict['type'] == 'SMS-DELIVER':
-                            sms = ReceivedSms(self, int(msgStat), smsDict['number'], smsDict['time'], smsDict['text'], smsDict['smsc'], smsDict.get('udh', []))
+                            sms = ReceivedSms(self, int(msgStat), smsDict['number'], smsDict['time'], smsDict['text'], msgIndex, smsDict['smsc'], smsDict.get('udh', []))
                         elif smsDict['type'] == 'SMS-STATUS-REPORT':
                             sms = StatusReport(self, int(msgStat), smsDict['reference'], smsDict['number'], smsDict['time'], smsDict['discharge'], smsDict['status'])
                         else:
@@ -1426,7 +1428,7 @@ class GsmModem(SerialComms):
             if cmgrMatch:
                 msgStatus, number, msgTime = cmgrMatch.groups()
                 msgText = '\n'.join(msgData[1:-1])
-                return ReceivedSms(self, Sms.TEXT_MODE_STATUS_MAP[msgStatus], number, parseTextModeTimeStr(msgTime), msgText)
+                return ReceivedSms(self, Sms.TEXT_MODE_STATUS_MAP[msgStatus], number, parseTextModeTimeStr(msgTime), msgText, index)
             else:
                 # Try parsing status report
                 cmgrMatch = self.CMGR_SM_REPORT_REGEXT_TEXT.match(msgData[0])
@@ -1452,7 +1454,7 @@ class GsmModem(SerialComms):
             pdu = msgData[1]
             smsDict = decodeSmsPdu(pdu)
             if smsDict['type'] == 'SMS-DELIVER':
-                return ReceivedSms(self, int(stat), smsDict['number'], smsDict['time'], smsDict['text'], smsDict['smsc'], smsDict.get('udh', []))
+                return ReceivedSms(self, int(stat), smsDict['number'], smsDict['time'], smsDict['text'], index, smsDict['smsc'], smsDict.get('udh', []))
             elif smsDict['type'] == 'SMS-STATUS-REPORT':
                 return StatusReport(self, int(stat), smsDict['reference'], smsDict['number'], smsDict['time'], smsDict['discharge'], smsDict['status'])
             else:
